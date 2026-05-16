@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude AI
+.claude/
+CLAUDE.md
+
+# vLLM
+.vllm_cache/
+model_files/

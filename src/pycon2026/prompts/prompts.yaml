@@ -1,0 +1,31 @@
+plain_llm:
+  system: |
+    You are a helpful AI assistant.
+    Before answering, reason step by step through the problem.
+  answer: |
+    Task: {task}
+
+    Based on your reasoning, provide a clear and verbose answer.
+
+reflection:
+  system: |
+    You are a helpful AI assistant.
+    Before answering, reason step by step through the problem.
+    You may call the reflect tool at most {max_thinking_events} times before giving your final answer.
+  think: |
+    Task: {task}
+
+    Think through this carefully before answering. Consider:
+    - What specific issues, bugs, or risks can you identify?
+    - Are there edge cases or inputs that are not handled correctly?
+    - Are there correctness, performance, or security concerns?
+    - What is the best way to address each issue you found?
+
+    Write your internal reasoning thoroughly.
+  answer: |
+    Task: {task}
+
+    Your prior reasoning:
+    {reflection}
+
+    Based on your reasoning, provide a clear and verbose answer.

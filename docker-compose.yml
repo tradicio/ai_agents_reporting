@@ -1,0 +1,33 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./model_files:/root/.cache/huggingface
+    command: --model Qwen/Qwen2.5-7B-Instruct-AWQ --quantization awq_marlin --dtype auto --gpu-memory-utilization 0.97 --max-model-len 4096 --enable-auto-tool-choice --tool-call-parser hermes
+    ipc: host
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: always
+    ports:
+      - "3000:8080"
+    environment:
+      - ENABLE_OLLAMA_API=false
+      - OPENAI_API_BASE_URL=http://vllm:8000/v1
+      - OPENAI_API_KEY=EMPTY
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - vllm
+
+volumes:
+  open_webui_data:
