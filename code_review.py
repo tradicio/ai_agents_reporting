@@ -10,7 +10,7 @@ logging.basicConfig(
 logging.getLogger("src.pycon2026").setLevel(logging.INFO)
 
 from src.pycon2026.agents.plain_llm import PlainLLM
-from src.pycon2026.agents.reflection_agent import ReflectionAgent
+from src.pycon2026.agents.reflection.reflection_agent import ReflectionAgent
 
 model = os.environ.get("VLLM_MODEL")
 
