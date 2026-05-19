@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     volumes:
       - ./model_files:/root/.cache/huggingface
-    command: --model Qwen/Qwen2.5-7B-Instruct-AWQ --quantization awq_marlin --dtype auto --gpu-memory-utilization 0.97 --max-model-len 4096 --enable-auto-tool-choice --tool-call-parser hermes
+    command: --model Qwen/Qwen2.5-7B-Instruct-AWQ --quantization awq_marlin --dtype auto --gpu-memory-utilization 0.97 --max-model-len 8192 --enable-auto-tool-choice --tool-call-parser hermes
     ipc: host
     restart: unless-stopped
 
