@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 logging.getLogger("src.pycon2026").setLevel(logging.INFO)
 
-from src.pycon2026.agents.github_assistant import GitHubAssistantAgent
+from src.pycon2026.agents.react.github_assistant import GitHubAssistantAgent
 
 model = os.environ.get("VLLM_MODEL")
 

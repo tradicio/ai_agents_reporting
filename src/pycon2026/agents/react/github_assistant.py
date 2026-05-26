@@ -16,7 +16,6 @@ from src.pycon2026.events.post_comment import PostCommentEvent
 from src.pycon2026.events.reflect import ReflectEvent
 
 # Tools
-from src.pycon2026.tools.reflection import REFLECT_TOOL
 from src.pycon2026.tools.github import LIST_ISSUES_TOOL, POST_COMMENT_TOOL
 
 load_dotenv()
@@ -26,11 +25,9 @@ logger = logging.getLogger(__name__)
 class GitHubAssistantAgent(Agent):
     initial_state = "idle"
     transitions = {
-        ("idle", "reflect"): "idle",
         ("idle", "list_issues"): "issues_listed",
-        ("issues_listed", "reflect"): "issues_listed",
         ("issues_listed", "post_comment"): "commenting",
-        ("commenting", "reflect"): "commenting",
+        ("issues_listed", "answer"): "done",
         ("commenting", "post_comment"): "commenting",
         ("commenting", "answer"): "done",
     }
@@ -47,7 +44,7 @@ class GitHubAssistantAgent(Agent):
 
     def run(self, task: str) -> str:
         messages = [{"role": "user", "content": task}]
-        tools = [REFLECT_TOOL.model_dump(), LIST_ISSUES_TOOL.model_dump(), POST_COMMENT_TOOL.model_dump()]
+        tools = [LIST_ISSUES_TOOL.model_dump(), POST_COMMENT_TOOL.model_dump()]
 
         for iteration in range(constants.MAX_GITHUB_ASSISTANTS_ITERATIONS):
             logger.info("Iteration %d/%d", iteration + 1, constants.MAX_GITHUB_ASSISTANTS_ITERATIONS)
@@ -62,6 +59,12 @@ class GitHubAssistantAgent(Agent):
             choice = response.choices[0]
 
             if choice.finish_reason == "tool_calls":
+                thought = choice.message.content or ""
+                if thought:
+                    logger.info("Thought (%d chars): %s", len(thought), thought)
+                    self.emit(ReflectEvent(reasoning=thought, content=None))
+                    self.memory.set("last_reasoning", thought)
+
                 tool_call = choice.message.tool_calls[0]
                 args = json.loads(tool_call.function.arguments)
                 messages.append(choice.message)
@@ -94,21 +97,12 @@ class GitHubAssistantAgent(Agent):
         return "Maximum iterations reached without a final answer."
 
     def _dispatch_tool(self, tool_name: str, args: dict) -> str:
-        if tool_name == "reflect":
-            return self._handle_reflect(args)
         if tool_name == "list_issues":
             return self._handle_list_issues()
         if tool_name == "post_comment":
             return self._handle_post_comment(args)
         logger.warning("Unknown tool call: %s", tool_name)
         return f"Unknown tool: {tool_name}"
-
-    def _handle_reflect(self, args: dict) -> str:
-        reasoning = args["reasoning"]
-        logger.info("Reflect (%d chars): %s", len(reasoning), reasoning)
-        self.emit(ReflectEvent(reasoning=reasoning, content=None))
-        self.memory.set("last_reasoning", reasoning)
-        return reasoning
 
     def _handle_list_issues(self) -> str:
         url = f"{constants.GITHUB_API}/repos/{self.repo}/issues"
