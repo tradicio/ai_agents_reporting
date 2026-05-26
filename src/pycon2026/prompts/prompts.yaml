@@ -24,26 +24,36 @@ github_assistant:
 
 reflection:
   system: |
-    You are a helpful AI assistant.
-    Before answering, reason step by step through the problem.
-    You may call the reflect tool at most {max_thinking_events} times before giving your final answer.
-  think: |
+    You are a helpful AI assistant that produces high-quality responses through iterative self-improvement.
+  generate: |
     Task: {task}
 
-    Think through this carefully before answering. Consider:
-    - What specific issues, bugs, or risks can you identify?
-    - Are there edge cases or inputs that are not handled correctly?
-    - Are there correctness, performance, or security concerns?
-    - What is the best way to address each issue you found?
-
-    Write your internal reasoning thoroughly.
-  answer: |
+    Provide your best answer to this task.
+  critique: |
     Task: {task}
 
-    Your prior reasoning:
-    {reflection}
+    Your previous response:
+    {response}
 
-    Based on your reasoning, provide a clear and verbose answer.
+    Critically evaluate the response above. Assess:
+    - Correctness: are all claims accurate?
+    - Completeness: does it fully address the task?
+    - Clarity: is it well-structured and easy to follow?
+    - Any errors, gaps, or areas for improvement?
+
+    If the response is already excellent and cannot be meaningfully improved, begin your reply with the exact phrase: "NO_IMPROVEMENT_NEEDED".
+    Otherwise, describe the specific issues clearly.
+  refine: |
+    Task: {task}
+
+    Previous response:
+    {response}
+
+    Critique:
+    {critique}
+
+    Write an improved response that addresses every issue raised in the critique.
+    If the critique found no meaningful issues, return the previous response unchanged.
 
 dev_agent:
   system: |

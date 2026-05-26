@@ -1,99 +1,67 @@
-import json
 import logging
 
 from src.pycon2026.abstract import Agent
+from src.pycon2026.constants import constants
+from src.pycon2026.events.answer import AnswerEvent
+from src.pycon2026.events.critique import CritiqueEvent
+from src.pycon2026.events.initial_response import InitialResponseEvent
+from src.pycon2026.events.refined_response import RefinedResponseEvent
 
 logger = logging.getLogger(__name__)
-from src.pycon2026.constants import constants
 
-# Events
-from src.pycon2026.events.answer import AnswerEvent
-from src.pycon2026.events.reflect import ReflectEvent
-from src.pycon2026.events.save_memory import SaveMemoryEvent
 
-# Tools
-from src.pycon2026.tools.reflection import REFLECT_TOOL
 
 
 class ReflectionAgent(Agent):
     initial_state = "idle"
     transitions = {
-        ("idle", "reflect"): "thinking",
-        ("thinking", "reflect"): "thinking",
-        ("thinking", "save_memory"): "thinking",
-        ("thinking", "answer"): "done",
+        ("idle", "initial_response"): "evaluating",
+        ("evaluating", "critique"): "refining",
+        ("refining", "refined_response"): "evaluating",
+        ("refining", "answer"): "done",
+        ("evaluating", "answer"): "done",
     }
 
     def __init__(self, model: str):
         super().__init__(model, prompt_key="reflection")
-        self.system_prompt = self.system_prompt.format(
-            max_thinking_events=constants.MAX_THINKING_EVENTS
-        )
 
     def run(self, task: str) -> str:
-        messages = [{"role": "user", "content": task}]
-        accumulated_reasoning: list[str] = []
-        reflect_count = 0
+        generate_prompt = self.prompts["reflection"]["generate"].format(task=task)
+        response = self._call_llm([{"role": "user", "content": generate_prompt}])
+        logger.info("Initial response produced (%d chars)", len(response))
+        self.emit(InitialResponseEvent(content=response))
+        self.memory.set("last_response", response)
 
-        for thinking_step in range(constants.MAX_THINKING_EVENTS + 1):
-            tool_choice = "auto" if thinking_step < constants.MAX_THINKING_EVENTS else "none"
-            logger.info("Step %d/%d (tool_choice=%s)", thinking_step + 1, constants.MAX_THINKING_EVENTS + 1, tool_choice)
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "system", "content": self.system_prompt}] + messages,
-                tools=[REFLECT_TOOL.model_dump()],
-                tool_choice=tool_choice,
+        for iteration in range(constants.MAX_THINKING_EVENTS):
+            critique_prompt = self.prompts["reflection"]["critique"].format(
+                task=task, response=response
             )
+            critique = self._call_llm([{"role": "user", "content": critique_prompt}])
+            logger.info(
+                "Critique #%d (%d chars): %s",
+                iteration + 1, len(critique), critique[:120],
+            )
+            self.emit(CritiqueEvent(content=critique))
+            self.memory.set("last_critique", critique)
 
-            choice = response.choices[0]
-            self._accumulate_tokens(response)
+            if critique.strip().startswith(constants._NO_IMPROVEMENT_SENTINEL):
+                logger.info("No improvement needed after iteration %d — returning", iteration + 1)
+                self.emit(AnswerEvent(content=response))
+                self.memory.set("last_answer", response)
+                return response
 
-            if choice.finish_reason == "tool_calls":
-                tool_call = choice.message.tool_calls[0]
-                reasoning = json.loads(tool_call.function.arguments)["reasoning"]
+            refine_prompt = self.prompts["reflection"]["refine"].format(
+                task=task, response=response, critique=critique
+            )
+            response = self._call_llm([{"role": "user", "content": refine_prompt}])
+            logger.info("Refined response #%d (%d chars)", iteration + 1, len(response))
+            self.memory.set("last_response", response)
 
-                reflect_count += 1
-                step_in = response.usage.prompt_tokens if response.usage else 0
-                step_out = response.usage.completion_tokens if response.usage else 0
-                logger.info(
-                    "Reflection #%d: %s (%d chars) | step tokens: in=%d out=%d | running total: in=%d out=%d",
-                    reflect_count, reasoning, len(reasoning),
-                    step_in, step_out,
-                    self._input_tokens, self._output_tokens,
-                )
-
-                self.emit(ReflectEvent(reasoning=reasoning, content=choice.message.content))
-                self.memory.set("last_reasoning", reasoning)
-                accumulated_reasoning.append(reasoning)
-
-                messages.append(choice.message)
-                tool_result = reasoning
-                logger.info("Injecting reflection #%d as tool result context (%d chars)", reflect_count, len(tool_result))
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": tool_result,
-                })
-
-                if reflect_count >= constants.COMPRESS_AFTER_REFLECTIONS:
-                    summary = "\n\n".join(
-                        f"Step {i + 1}: {r}" for i, r in enumerate(accumulated_reasoning)
-                    )
-                    logger.info("Compressing %d reflection steps into memory", reflect_count)
-
-                    self.emit(SaveMemoryEvent(summary=summary))
-                    self.memory.set("accumulated_reasoning", summary)
-
-                    messages = [
-                        {"role": "user", "content": task},
-                        {"role": "assistant", "content": f"My prior reasoning:\n{summary}"},
-                    ]
-                    accumulated_reasoning = []
-                    reflect_count = 0
+            is_last = iteration == constants.MAX_THINKING_EVENTS - 1
+            if is_last:
+                self.emit(AnswerEvent(content=response))
             else:
-                content = choice.message.content
-                logger.info("Answer produced (%d chars)", len(content))
-                self.emit(AnswerEvent(content=content))
-                self.memory.set("last_answer", content)
-                return content
+                self.emit(RefinedResponseEvent(content=response))
+
+        self.memory.set("last_answer", response)
+        return response
