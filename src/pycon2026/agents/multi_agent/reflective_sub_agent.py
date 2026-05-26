@@ -11,7 +11,7 @@ from src.pycon2026.tools.reflection import REFLECT_TOOL
 logger = logging.getLogger(__name__)
 
 
-class DevAgent(Agent):
+class ReflectiveSubAgent(Agent):
     initial_state = "idle"
     transitions = {
         ("idle", "reflect"): "thinking",
@@ -20,20 +20,21 @@ class DevAgent(Agent):
         ("thinking", "answer"): "done",
     }
 
-    def __init__(self, model: str):
-        super().__init__(model, prompt_key="dev_agent")
+    def __init__(self, model: str, prompt_key: str):
+        super().__init__(model, prompt_key=prompt_key)
         self.system_prompt = self.system_prompt.format(
             max_thinking_events=constants.MAX_SUBAGENT_REFLECTIONS
         )
 
     def run(self, task: str) -> str:
+        name = self.__class__.__name__
         messages = [{"role": "user", "content": task}]
         accumulated_reasoning: list[str] = []
         reflect_count = 0
 
         for step in range(constants.MAX_SUBAGENT_REFLECTIONS + 1):
             tool_choice = "auto" if step < constants.MAX_SUBAGENT_REFLECTIONS else "none"
-            logger.info("[DevAgent] Step %d/%d (tool_choice=%s)", step + 1, constants.MAX_SUBAGENT_REFLECTIONS + 1, tool_choice)
+            logger.info("[%s] Step %d/%d (tool_choice=%s)", name, step + 1, constants.MAX_SUBAGENT_REFLECTIONS + 1, tool_choice)
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -48,7 +49,7 @@ class DevAgent(Agent):
                 tool_call = choice.message.tool_calls[0]
                 reasoning = json.loads(tool_call.function.arguments)["reasoning"]
                 reflect_count += 1
-                logger.info("[DevAgent] Reflection #%d (%d chars)", reflect_count, len(reasoning))
+                logger.info("[%s] Reflection #%d (%d chars)", name, reflect_count, len(reasoning))
 
                 self.emit(ReflectEvent(reasoning=reasoning, content=choice.message.content))
                 self.memory.set("last_reasoning", reasoning)
@@ -59,7 +60,7 @@ class DevAgent(Agent):
 
                 if reflect_count >= constants.COMPRESS_AFTER_REFLECTIONS:
                     summary = "\n\n".join(f"Step {i + 1}: {r}" for i, r in enumerate(accumulated_reasoning))
-                    logger.info("[DevAgent] Compressing %d reflection steps into memory", reflect_count)
+                    logger.info("[%s] Compressing %d reflection steps into memory", name, reflect_count)
                     self.emit(SaveMemoryEvent(summary=summary))
                     self.memory.set("accumulated_reasoning", summary)
                     messages = [
@@ -70,7 +71,7 @@ class DevAgent(Agent):
                     reflect_count = 0
             else:
                 content = choice.message.content or ""
-                logger.info("[DevAgent] Answer produced (%d chars)", len(content))
+                logger.info("[%s] Answer produced (%d chars)", name, len(content))
                 self.emit(AnswerEvent(content=content))
                 self.memory.set("last_answer", content)
                 return content

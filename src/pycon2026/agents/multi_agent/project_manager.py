@@ -13,9 +13,7 @@ from src.pycon2026.events.orchestrator import (
     OrchestratorDoneEvent,
     WriteFileEvent,
 )
-from src.pycon2026.agents.multi_agent.dev_agent import DevAgent
-from src.pycon2026.agents.multi_agent.tester_agent import TesterAgent
-from src.pycon2026.agents.multi_agent.doc_agent import DocAgent
+from src.pycon2026.agents.multi_agent.sub_agents import DevAgent, TesterAgent, DocAgent
 from src.pycon2026.tools.orchestrator import (
     CALL_DEV_TOOL,
     CALL_DOC_TOOL,
@@ -65,17 +63,16 @@ class ProjectManagerAgent(Agent):
         self._output_dir = output_dir
         self._files_written: list[str] = []
 
-    # ------------------------------------------------------------------ run --
+    _TOOLS = [
+        CALL_DEV_TOOL.model_dump(),
+        CALL_TESTER_TOOL.model_dump(),
+        CALL_DOC_TOOL.model_dump(),
+        WRITE_FILE_TOOL.model_dump(),
+    ]
 
     def run(self, task: str) -> str:
         self._files_written = []
         messages = [{"role": "user", "content": task}]
-        tools = [
-            CALL_DEV_TOOL.model_dump(),
-            CALL_TESTER_TOOL.model_dump(),
-            CALL_DOC_TOOL.model_dump(),
-            WRITE_FILE_TOOL.model_dump(),
-        ]
 
         for iteration in range(constants.MAX_ORCHESTRATOR_ITERATIONS):
             logger.info(
@@ -87,7 +84,7 @@ class ProjectManagerAgent(Agent):
                 model=self.model,
                 messages=[{"role": "system", "content": self.system_prompt}]
                 + self._trim_messages(messages),
-                tools=tools,
+                tools=self._TOOLS,
                 tool_choice="auto",
             )
             self._accumulate_tokens(response)
@@ -120,8 +117,6 @@ class ProjectManagerAgent(Agent):
         logger.warning("[ProjectManager] Reached iteration limit without a final answer.")
         return "Maximum orchestrator iterations reached."
 
-    # -------------------------------------------------------- tool dispatch --
-
     def _dispatch_tool(self, tool_name: str, args: dict) -> str:
         handlers = {
             "call_dev": self._handle_call_dev,
@@ -137,33 +132,28 @@ class ProjectManagerAgent(Agent):
         limit = constants.MAX_TOOL_RESULT_CHARS
         return result if len(result) <= limit else result[:limit] + f"\n…[truncated, {len(result) - limit} chars omitted]"
 
-    def _handle_call_dev(self, args: dict) -> str:
-        task, context = args["task"], args.get("context", "")
-        self.emit(DelegateDevEvent(task_summary=task[:120]))
-        logger.info("[ProjectManager] → DevAgent: %s", task[:80])
-        result = self._dev(f"{task}\n\n--- Context ---\n{context}" if context else task)
-        self.memory.set("dev_output", result)
+    def _delegate(self, agent, event_cls, memory_key: str, args: dict) -> str:
+        task = args.get("task", "")
+        context = args.get("context", "")
+        self.emit(event_cls(task_summary=task[:120]))
+        logger.info("[ProjectManager] → %s: %s", type(agent).__name__, task[:80])
+        result = agent(f"{task}\n\n--- Context ---\n{context}" if context else task)
+        self.memory.set(memory_key, result)
         return result
+
+    def _handle_call_dev(self, args: dict) -> str:
+        return self._delegate(self._dev, DelegateDevEvent, "dev_output", args)
 
     def _handle_call_tester(self, args: dict) -> str:
-        task, context = args["task"], args.get("context", "")
-        self.emit(DelegateTesterEvent(task_summary=task[:120]))
-        logger.info("[ProjectManager] → TesterAgent: %s", task[:80])
-        result = self._tester(f"{task}\n\n--- Context ---\n{context}" if context else task)
-        self.memory.set("tester_output", result)
-        return result
+        return self._delegate(self._tester, DelegateTesterEvent, "tester_output", args)
 
     def _handle_call_doc(self, args: dict) -> str:
-        task = args.get("task", "Write documentation.")
-        context = args.get("context", "") or "\n\n".join(filter(None, [
-            self.memory.get("dev_output", ""),
-            self.memory.get("tester_output", ""),
-        ]))
-        self.emit(DelegateDocEvent(task_summary=task[:120]))
-        logger.info("[ProjectManager] → DocAgent: %s", task[:80])
-        result = self._doc(f"{task}\n\n--- Context ---\n{context}" if context else task)
-        self.memory.set("doc_output", result)
-        return result
+        if not args.get("context"):
+            args = dict(args, context="\n\n".join(filter(None, [
+                self.memory.get("dev_output", ""),
+                self.memory.get("tester_output", ""),
+            ])))
+        return self._delegate(self._doc, DelegateDocEvent, "doc_output", args)
 
     def _handle_write_file(self, args: dict) -> str:
         target = self._output_dir / Path(args["filename"]).name
@@ -173,8 +163,6 @@ class ProjectManagerAgent(Agent):
         self._files_written.append(str(target))
         logger.info("[ProjectManager] File written: %s (%d bytes)", target, len(args["content"]))
         return f"File written successfully: {target}"
-
-    # ------------------------------------------------- message management --
 
     @staticmethod
     def _trim_messages(messages: list[dict]) -> list[dict]:
