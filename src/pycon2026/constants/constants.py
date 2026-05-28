@@ -14,4 +14,4 @@ MAX_TOOL_ARG_CONTEXT_CHARS = 200
 MAX_PM_CONTEXT_MESSAGES = 6 
 
 LOGS_FOLDER = "logs"
-LOG_FILENAME_TEMPLATE = "{agent_name}_%Y_%d_%m_%H.txt"
+LOG_FILENAME_TEMPLATE = "{agent_name}_%Y_%d_%m_%H_%M_%S.txt"
