@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -78,9 +79,11 @@ class Agent(ABC):
 
     def __call__(self, task: str) -> str:
         self._reset()
+        start = time.monotonic()
         result = self.run(task)
+        elapsed = time.monotonic() - start
         logger.info(
-            "Tokens — input: %d, output: %d, total: %d",
-            self._input_tokens, self._output_tokens, self._total_tokens,
+            "Tokens — input: %d, output: %d, total: %d | elapsed: %.2fs",
+            self._input_tokens, self._output_tokens, self._total_tokens, elapsed,
         )
         return result

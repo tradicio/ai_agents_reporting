@@ -61,14 +61,16 @@ class GitHubAssistantAgent(Agent):
             if choice.finish_reason == "tool_calls":
                 thought = choice.message.content or ""
                 if thought:
-                    logger.info("Thought (%d chars): %s", len(thought), thought)
+                    logger.info("Thought: %s", thought)
                     self.emit(ReflectEvent(reasoning=thought, content=None))
                     self.memory.set("last_reasoning", thought)
 
                 tool_call = choice.message.tool_calls[0]
                 args = json.loads(tool_call.function.arguments)
+                logger.info("Action: %s(%s)", tool_call.function.name, json.dumps(args))
                 messages.append(choice.message)
                 tool_result = self._dispatch_tool(tool_call.function.name, args)
+                logger.info("Observation: %s", tool_result)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -78,18 +80,22 @@ class GitHubAssistantAgent(Agent):
                 content = choice.message.content or ""
                 match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, re.DOTALL)
                 if match:
-                    tool_data = json.loads(match.group(1))
+                    tool_data = json.loads(match.group(1), strict=False)
                     tool_name = tool_data.get("name")
-                    logger.info("Fallback text tool call detected: %s", tool_name)
+                    fallback_args = tool_data.get("arguments", {})
+                    logger.info("Thought: %s", content[:content.index("<tool_call>")].strip() or "(none)")
+                    logger.info("Action: %s(%s)", tool_name, json.dumps(fallback_args))
                     messages.append(choice.message)
-                    tool_result = self._dispatch_tool(tool_name, tool_data.get("arguments", {}))
+                    tool_result = self._dispatch_tool(tool_name, fallback_args)
+                    logger.info("Observation: %s", tool_result)
                     messages.append({
                         "role": "tool",
                         "tool_call_id": "fallback",
                         "content": tool_result,
                     })
                 else:
-                    logger.info("Answer produced (%d chars):\n%s", len(content), content)
+                    logger.info("Thought: %s", content)
+                    logger.info("Answer: %s", content)
                     self.emit(AnswerEvent(content=content))
                     self.memory.set("last_answer", content)
                     return content
