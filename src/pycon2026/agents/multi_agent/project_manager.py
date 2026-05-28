@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-from pathlib import Path
 
 from src.pycon2026.abstract import Agent
 from src.pycon2026.constants import constants
@@ -11,19 +10,15 @@ from src.pycon2026.events.orchestrator import (
     DelegateDocEvent,
     DelegateTesterEvent,
     OrchestratorDoneEvent,
-    WriteFileEvent,
 )
 from src.pycon2026.agents.multi_agent.sub_agents import DevAgent, TesterAgent, DocAgent
 from src.pycon2026.tools.orchestrator import (
     CALL_DEV_TOOL,
     CALL_DOC_TOOL,
     CALL_TESTER_TOOL,
-    WRITE_FILE_TOOL,
 )
 
 logger = logging.getLogger(__name__)
-
-_GENERATED_DIR = Path("generated")
 
 
 class ProjectManagerAgent(Agent):
@@ -54,24 +49,19 @@ class ProjectManagerAgent(Agent):
         dev: DevAgent | None = None,
         tester: TesterAgent | None = None,
         doc: DocAgent | None = None,
-        output_dir: Path = _GENERATED_DIR,
     ):
         super().__init__(model, prompt_key="project_manager")
         self._dev = dev or DevAgent(model=model)
         self._tester = tester or TesterAgent(model=model)
         self._doc = doc or DocAgent(model=model)
-        self._output_dir = output_dir
-        self._files_written: list[str] = []
 
     _TOOLS = [
         CALL_DEV_TOOL.model_dump(),
         CALL_TESTER_TOOL.model_dump(),
         CALL_DOC_TOOL.model_dump(),
-        WRITE_FILE_TOOL.model_dump(),
     ]
 
     def run(self, task: str) -> str:
-        self._files_written = []
         messages = [{"role": "user", "content": task}]
 
         for iteration in range(constants.MAX_ORCHESTRATOR_ITERATIONS):
@@ -109,10 +99,9 @@ class ProjectManagerAgent(Agent):
                     messages.append({"role": "user", "content": f"Tool result for {tool_name}:\n{self._dispatch_tool(tool_name, args)}"})
                     continue
                 logger.info("[ProjectManager] Final answer (%d chars):\n%s", len(content), content)
-                self.emit(OrchestratorDoneEvent(files_written=self._files_written))
+                self.emit(OrchestratorDoneEvent())
                 self.emit(AnswerEvent(content=content))
                 self.memory.set("last_answer", content)
-                self.memory.set("files_written", self._files_written)
                 return content
 
         logger.warning("[ProjectManager] Reached iteration limit without a final answer.")
@@ -123,7 +112,6 @@ class ProjectManagerAgent(Agent):
             "call_dev": self._handle_call_dev,
             "call_tester": self._handle_call_tester,
             "call_doc_expert": self._handle_call_doc,
-            "write_file": self._handle_write_file,
         }
         handler = handlers.get(tool_name)
         if handler is None:
@@ -155,15 +143,6 @@ class ProjectManagerAgent(Agent):
                 self.memory.get("tester_output", ""),
             ])))
         return self._delegate(self._doc, DelegateDocEvent, "doc_output", args)
-
-    def _handle_write_file(self, args: dict) -> str:
-        target = self._output_dir / Path(args["filename"]).name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(args["content"], encoding="utf-8")
-        self.emit(WriteFileEvent(path=str(target)))
-        self._files_written.append(str(target))
-        logger.info("[ProjectManager] File written: %s (%d bytes)", target, len(args["content"]))
-        return f"File written successfully: {target}"
 
     @staticmethod
     def _trim_messages(messages: list[dict]) -> list[dict]:
@@ -204,7 +183,7 @@ class ProjectManagerAgent(Agent):
             return None
         raw = match.group(1).strip()
         try:
-            data = json.loads(raw)
+            data = json.loads(raw, strict=False)
             return data["name"], data.get("arguments", {})
         except (json.JSONDecodeError, KeyError):
             pass

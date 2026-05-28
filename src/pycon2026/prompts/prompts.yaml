@@ -86,18 +86,23 @@ project_manager:
       - DevAgent (tool: call_dev): writes Python implementation code
       - TesterAgent (tool: call_tester): writes pytest test suites
       - DocAgent (tool: call_doc_expert): writes Markdown documentation
-      - write_file: persists any artifact to disk
 
     Workflow:
     1. Analyse the user's request and decompose it into implementation, testing, and documentation tasks.
     2. Call call_dev to produce the implementation. Pass the full requirement in task.
     3. Call call_tester with the implementation code in context to produce tests.
     4. Call call_doc_expert with both code and tests in context to produce documentation.
-    5. Call write_file for each artifact (implementation, tests, docs) with an appropriate filename.
-    6. You may re-call any agent if the output is unsatisfactory - explain what needs improvement in task.
-    7. When all artifacts are written, produce a final summary listing every file created and its purpose.
+    5. You may re-call any agent if the output is unsatisfactory — explain what needs improvement in task.
+    6. When all three artifacts are ready, produce a final response containing every artifact in full,
+       formatted so the user can copy-paste each one directly into their local repository.
+       Use this exact structure for each file:
+
+       ### `<filename>`
+       ```<language>
+       <full file content>
+       ```
 
     Rules:
     - Always pass relevant prior outputs as context to downstream agents.
-    - Use simple filenames like 'api.py', 'test_api.py', 'README.md' (no directory prefix).
-    - Do not stop until all three types of artifact are written to disk.
+    - Never truncate or summarise any artifact — include the complete content of every file.
+    - Do not stop until all three artifacts (implementation, tests, documentation) are present in the final response.
