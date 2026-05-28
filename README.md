@@ -99,7 +99,7 @@ Runs a **ProjectManagerAgent** that orchestrates three specialised sub-agents:
 | `TesterAgent` | Writes pytest tests |
 | `DocAgent` | Writes documentation |
 
-The orchestrator delegates subtasks, collects results, and writes output files to `./generated/`.
+The orchestrator delegates subtasks via tool calls and collects results from each sub-agent.
 
 ```bash
 python project_manager.py
@@ -112,28 +112,31 @@ python project_manager.py
 ```
 src/pycon2026/
 ├── abstract/
-│   ├── agent.py          # Agent ABC — LLM client, prompt loading, event bus
+│   ├── agent.py          # Agent ABC — LLM client, prompt loading, FSM, event bus
 │   ├── event.py          # Base event class
 │   ├── memory.py         # Key-value store per agent instance
 │   └── tool.py           # Tool definition helpers
 ├── agents/
 │   ├── plain_llm.py              # Single-turn agent
 │   ├── reflection/
-│   │   └── reflection_agent.py   # Chain-of-thought loop via tool calling
+│   │   └── reflection_agent.py   # Generate → critique → refine loop
 │   ├── react/
 │   │   └── github_assistant.py   # ReAct agent with GitHub tools
 │   └── multi_agent/
 │       ├── project_manager.py    # Orchestrator
 │       ├── sub_agents.py         # Dev / Tester / Doc sub-agents
-│       └── reflective_sub_agent.py
+│       └── reflective_sub_agent.py  # Reflect-tool loop with context compression
 ├── events/               # Typed events emitted by agents
 ├── tools/                # Tool schemas (Pydantic models)
 ├── prompts/prompts.yaml  # All system prompts and user-turn templates
-└── constants/constants.py
+├── constants/constants.py
+└── utils/
+    └── logging_setup.py  # File logging setup per agent run
 ```
 
 ### Adding a new agent
 
 1. Add a new key to `src/pycon2026/prompts/prompts.yaml` with at least a `system` entry.
-2. Create a class in `src/pycon2026/agents/` that extends `Agent`
-3. Implement `run(self, task: str) -> str`.
+2. Create a class in `src/pycon2026/agents/` that extends `Agent`. Declare `initial_state` and `transitions` for FSM tracking.
+3. Implement `run(self, task: str) -> str`. Call `self.emit(SomeEvent(...))` at each meaningful state transition.
+4. Optionally define typed events in `events/` (subclass `Event`) and tool schemas in `tools/` (use the `Tool` Pydantic model).
