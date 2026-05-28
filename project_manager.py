@@ -14,6 +14,8 @@ logging.basicConfig(
 logging.getLogger("src.pycon2026").setLevel(logging.INFO)
 
 from src.pycon2026.agents.multi_agent.project_manager import ProjectManagerAgent
+from src.pycon2026.utils.logging_setup import setup_file_logging
+setup_file_logging("project_manager")
 
 model = os.environ["VLLM_MODEL"]
 

@@ -108,6 +108,7 @@ class ProjectManagerAgent(Agent):
                     messages.append({"role": "assistant", "content": content[:constants.MAX_TOOL_RESULT_CHARS]})
                     messages.append({"role": "user", "content": f"Tool result for {tool_name}:\n{self._dispatch_tool(tool_name, args)}"})
                     continue
+                logger.info("[ProjectManager] Final answer (%d chars):\n%s", len(content), content)
                 self.emit(OrchestratorDoneEvent(files_written=self._files_written))
                 self.emit(AnswerEvent(content=content))
                 self.memory.set("last_answer", content)

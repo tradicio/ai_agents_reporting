@@ -72,7 +72,9 @@ class Agent(ABC):
             messages=[{"role": "system", "content": self.system_prompt}] + messages,
         )
         self._accumulate_tokens(response)
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        logger.info("LLM response (%d chars):\n%s", len(content), content)
+        return content
 
     def __call__(self, task: str) -> str:
         self._reset()

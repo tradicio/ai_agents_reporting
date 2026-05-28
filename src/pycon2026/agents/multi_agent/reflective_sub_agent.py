@@ -49,7 +49,7 @@ class ReflectiveSubAgent(Agent):
                 tool_call = choice.message.tool_calls[0]
                 reasoning = json.loads(tool_call.function.arguments)["reasoning"]
                 reflect_count += 1
-                logger.info("[%s] Reflection #%d (%d chars)", name, reflect_count, len(reasoning))
+                logger.info("[%s] Reflection #%d (%d chars):\n%s", name, reflect_count, len(reasoning), reasoning)
 
                 self.emit(ReflectEvent(reasoning=reasoning, content=choice.message.content))
                 self.memory.set("last_reasoning", reasoning)
@@ -71,7 +71,7 @@ class ReflectiveSubAgent(Agent):
                     reflect_count = 0
             else:
                 content = choice.message.content or ""
-                logger.info("[%s] Answer produced (%d chars)", name, len(content))
+                logger.info("[%s] Answer produced (%d chars):\n%s", name, len(content), content)
                 self.emit(AnswerEvent(content=content))
                 self.memory.set("last_answer", content)
                 return content

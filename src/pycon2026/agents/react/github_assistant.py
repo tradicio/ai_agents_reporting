@@ -89,7 +89,7 @@ class GitHubAssistantAgent(Agent):
                         "content": tool_result,
                     })
                 else:
-                    logger.info("Answer produced (%d chars)", len(content))
+                    logger.info("Answer produced (%d chars):\n%s", len(content), content)
                     self.emit(AnswerEvent(content=content))
                     self.memory.set("last_answer", content)
                     return content

@@ -224,3 +224,6 @@ CLAUDE.md
 # vLLM
 .vllm_cache/
 model_files/
+
+# Logs
+logs/
