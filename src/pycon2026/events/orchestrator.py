@@ -23,4 +23,4 @@ class WriteFileEvent(Event):
 
 class OrchestratorDoneEvent(Event):
     name: str = "orchestrator_done"
-    files_written: list[str]
+    files_written: list[str] = []
